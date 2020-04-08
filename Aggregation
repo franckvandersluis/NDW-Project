@@ -25,17 +25,26 @@ while True:
                 }
             }, {
                 '$group': {
-                    '_id': '$measurementSiteReference', 
-                    'time': {
-                        '$max': '$measurementTimeDefault'
-                    },  
-                    'MaxVehicleFlowRate': {
-                        '$max': '$vehicleFlowRate'
-                    }, 
-                    'MaxAverageVehicleSpeed': {
-                        '$max': '$averageVehicleSpeed'
-                    }
-                }
+            '_id': {
+                'measurementSiteReference': '$measurementSiteReference', 
+                'measuredValueIndex': '$measuredValueIndex'
+            }, 
+            'measurementSiteReference': {
+                '$first': '$measurementSiteReference'
+            }, 
+            'measuredValueIndex': {
+                '$first': '$measuredValueIndex'
+            }, 
+            'time': {
+                '$max': '$measurementTimeDefault'
+            }, 
+            'AvgVehicleFlowRate': {
+                '$avg': '$vehicleFlowRate'
+            }, 
+            'AvgAverageVehicleSpeed': {
+                '$avg': '$averageVehicleSpeed'
+            }
+        }
             }
         ])
         
