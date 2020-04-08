@@ -1,0 +1,87 @@
+import xml.etree.ElementTree as ET
+import gzip
+import ftplib #ftp library
+import urllib3
+import shutil
+import psycopg2
+import psycopg2.extras
+import time
+import datetime
+import pymongo
+
+########## EXTRACT DATA ##########
+
+def gettrafficspeed(outputfilename,fileurl,filenamelocal):
+
+    http = urllib3.PoolManager()
+    with http.request('GET', fileurl,
+                      preload_content=False) as r, \
+            open(filenamelocal, 'wb') as out_file:
+        shutil.copyfileobj(r, out_file)
+
+    return unzipXML(filenamelocal, outputfilename)
+
+def unzipXML(filename,outputfilename):
+
+    inF = gzip.open(filename, 'rb')
+    outF = open(outputfilename, 'wb')
+    outF.write(inF.read())
+    inF.close()
+    outF.close()
+
+    return outputfilename
+
+while True:
+
+    if datetime.datetime.now().second == 0:
+        
+        print("Go!")
+        
+        gettrafficspeed('raw_data.xml', 
+                        "http://opendata.ndw.nu/trafficspeed.xml.gz", 
+                        "trafficspeed.xml.gz")
+
+
+        ########## TRANSFORM DATA ##########
+
+
+        tree = ET.parse('raw_data.xml')
+        root = tree.getroot()
+
+        client = pymongo.MongoClient("mongodb://localhost:27017/")
+        db = client["ndw"]
+        col = db["measurements"]
+
+        data = []
+
+        for child in root.find('{http://schemas.xmlsoap.org/soap/envelope/}Body').find('{http://datex2.eu/schema/2/2_0}d2LogicalModel').find('{http://datex2.eu/schema/2/2_0}payloadPublication').findall('{http://datex2.eu/schema/2/2_0}siteMeasurements'):
+
+            measurementSiteReference = child.find('{http://datex2.eu/schema/2/2_0}measurementSiteReference').get('id')
+            measurementTimeDefault = datetime.datetime.strptime(child.find('{http://datex2.eu/schema/2/2_0}measurementTimeDefault').text, '%Y-%m-%dT%H:%M:00Z')
+
+            for nested in child.findall('{http://datex2.eu/schema/2/2_0}measuredValue'):
+
+                measuredValueIndex = nested.get('index')
+
+                try:
+                    vehicleFlowRate = int(nested.find('{http://datex2.eu/schema/2/2_0}measuredValue').find('{http://datex2.eu/schema/2/2_0}basicData').find('{http://datex2.eu/schema/2/2_0}vehicleFlow').find('{http://datex2.eu/schema/2/2_0}vehicleFlowRate').text)
+                except:
+                    vehicleFlowRate = None
+
+                try:
+                    averageVehicleSpeed = int(nested.find('{http://datex2.eu/schema/2/2_0}measuredValue').find('{http://datex2.eu/schema/2/2_0}basicData').find('{http://datex2.eu/schema/2/2_0}averageVehicleSpeed').find('{http://datex2.eu/schema/2/2_0}speed').text)
+                except:
+                    averageVehicleSpeed = None
+
+                data.append(
+                    {"measurementSiteReference": measurementSiteReference, 
+                     "measurementTimeDefault": measurementTimeDefault, 
+                     "measuredValueIndex": measuredValueIndex, 
+                     "vehicleFlowRate": vehicleFlowRate, 
+                     "averageVehicleSpeed": averageVehicleSpeed}
+                )
+
+
+        ########## LOAD DATA ##########
+        
+        col.insert_many(data)
