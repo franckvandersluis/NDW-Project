@@ -1,0 +1,38 @@
+from datetime import datetime, tzinfo, timezone, timedelta
+from pymongo import MongoClient
+
+tsto = datetime.now()
+tsfrom = tsto - timedelta(hours=1)
+
+client = MongoClient("mongodb://localhost:27017/")
+db = client["ndw"]
+col = db["measurements"]
+aggregated_col = db["aggregated_measurements"]
+
+
+
+d = col.aggregate([
+    {
+        '$match': {
+            'measurementTimeDefault': {
+                '$gte': tsfrom, 
+                '$lt': tsto
+            }
+        }
+    }, {
+        '$group': {
+            '_id': '$measurementSiteReference', 
+            'time': {
+                '$max': '$measurementTimeDefault'
+            },  
+            'MaxVehicleFlowRate': {
+                '$max': '$vehicleFlowRate'
+            }, 
+            'MaxAverageVehicleSpeed': {
+                '$max': '$averageVehicleSpeed'
+            }
+        }
+    }
+])
+
+aggregated_col.insert_many(d)
